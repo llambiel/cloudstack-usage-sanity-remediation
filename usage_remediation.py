@@ -70,32 +70,61 @@ def remediateinstances():
 
         logging.info('Starting instances remediation pass')
         currentdatetime = time.strftime("%Y-%m-%d %H:%M:%S")
-        querygetusageinstances="SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null;"
         con = MySQLdb.connect(dbhost, user, pwd)
         con.autocommit(True)
         cursor = con.cursor()
+
+        #Remediate removed instances
+        querygetusageinstances="SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null;"
         cursor.execute(querygetusageinstances)
         rows = cursor.fetchall()
         usageinstanceid=[]
         for row in rows:
             usageinstanceid.append(row[0])
         for id in usageinstanceid:
-            querygetinstance="SELECT removed FROM cloud.vm_instance where id like '%s';" % id
+            querygetinstance="SELECT removed FROM cloud.vm_instance where id = '%s';" % id
             cursor.execute(querygetinstance)
             rows = cursor.fetchall()
             for row in rows:
                 csremoveddate = row[0]
                 if csremoveddate is not None:
                     # prevent removal of unprocessed hourly usage
-                    if (datetime.now() - csremoveddate) > timedelta(hours = 6):
-                        logging.warning('instance id %s active in usage but removed in cloudstack !', id)
+                    if (datetime.now() - csremoveddate) > timedelta(hours = 4):
+                        logging.warning('instance id %s existing in usage but removed in cloudstack !', id)
                         #remediate instance
                         if simulate == False:
-                            querysetvolumeremoved = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id like '%s'" % (currentdatetime, id)
-                            cursor.execute(querysetvolumeremoved)
-                            logging.warning('instance id %s has been remediated in usage', id)
+                            querysetinstanceremoved = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s'" % (currentdatetime, id)
+                            cursor.execute(querysetinstanceremoved)
+                            logging.warning('instance id %s has been remediated in usage (removed)', id)
                         else:
-                            logging.warning('instance id %s has been remediated in usage', id)
+                            logging.warning('instance id %s has been remediated in usage (removed) simulated', id)
+
+
+        #Remediate stopped instances
+        querygetusageinstances="SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null and usage_type = '1';"
+        cursor.execute(querygetusageinstances)
+        rows = cursor.fetchall()
+        usageinstanceid=[]
+        for row in rows:
+            usageinstanceid.append(row[0])
+        for id in usageinstanceid:
+            querygetinstance="SELECT state, update_time FROM cloud.vm_instance where id = '%s';" % id
+            cursor.execute(querygetinstance)
+            rows = cursor.fetchall()
+            for row in rows:
+                csstate = row[0]
+                csupdatedate = row[1]
+                if csstate == 'Stopped':
+                    # prevent removal of unprocessed hourly usage
+                    if (datetime.now() - csupdatedate) > timedelta(hours = 4):
+                        logging.warning('instance id %s state is running in usage but stopped in cloudstack !', id)
+                        #remediate instance
+                        if simulate == False:
+                            querysetinstancestopped = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s' and usage_type = '1'" % (currentdatetime, id)
+                            cursor.execute(querysetinstancestopped)
+                            logging.warning('instance id %s has been remediated in usage (stopped)', id)
+                        else:
+                            logging.warning('instance id %s has been remediated in usage (stopped) simulated', id)
         con.close()
         logging.info('Completed instances remediation pass')
 
