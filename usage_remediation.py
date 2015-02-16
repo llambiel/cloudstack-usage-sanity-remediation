@@ -120,7 +120,7 @@ def remediateinstances():
                         logging.warning('instance id %s state is running in usage but stopped in cloudstack !', id)
                         #remediate instance
                         if simulate == False:
-                            querysetinstancestopped = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s' and usage_type = '1'" % (currentdatetime, id)
+                            querysetinstancestopped = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s' and usage_type = '1'" % (csupdatedate, id)
                             cursor.execute(querysetinstancestopped)
                             logging.warning('instance id %s has been remediated in usage (stopped)', id)
                         else:
