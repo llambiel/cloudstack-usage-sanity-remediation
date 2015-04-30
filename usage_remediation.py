@@ -3,12 +3,12 @@
 #  usage_remediation.py
 #  This script perform sanity & remediation of cloudstack usage instances & volume records
 # Author : Loic Lambiel @ exoscale
-# Description :
 
 
 import MySQLdb
-import sys, getopt, argparse
-import logging, logging.handlers
+import argparse
+import logging
+import logging.handlers
 import time
 from datetime import datetime, timedelta
 try:
@@ -18,7 +18,8 @@ except ImportError:
     pass
 
 logfile = "/var/log/usage_remediation.log"
-logging.basicConfig(format='%(asctime)s %(pathname)s %(levelname)s:%(message)s', level=logging.DEBUG,filename=logfile)
+logging.basicConfig(format='%(asctime)s %(pathname)s %(levelname)s:%(message)s', level=logging.DEBUG, filename=logfile)
+
 
 def main():
     parser = argparse.ArgumentParser(description='This script perform sanity & remediation of cloudstack usage records')
@@ -32,31 +33,32 @@ def main():
     args = vars(parser.parse_args())
     return args
 
+
 def remediatevolumes():
 
-        logging.info('Starting volumes remediation pass')  
+        logging.info('Starting volumes remediation pass')
         currentdatetime = time.strftime("%Y-%m-%d %H:%M:%S")
-        querygetusagevolumes="SELECT id FROM cloud_usage.usage_volume where deleted is null;"
+        querygetusagevolumes = "SELECT id FROM cloud_usage.usage_volume where deleted is null;"
         con = MySQLdb.connect(dbhost, user, pwd)
         con.autocommit(True)
         cursor = con.cursor()
         cursor.execute(querygetusagevolumes)
         rows = cursor.fetchall()
-        usagevolumeid=[]
+        usagevolumeid = []
         for row in rows:
             usagevolumeid.append(row[0])
         for id in usagevolumeid:
-            querygetvolume="SELECT removed FROM cloud.volumes where id like '%s';" % id
+            querygetvolume = "SELECT removed FROM cloud.volumes where id like '%s';" % id
             cursor.execute(querygetvolume)
             rows = cursor.fetchall()
             for row in rows:
                 csremoveddate = row[0]
                 if csremoveddate is not None:
                     # prevent removal of unprocessed hourly usage
-                    if (datetime.now() - csremoveddate) > timedelta(hours = 6):
+                    if (datetime.now() - csremoveddate) > timedelta(hours=6):
                         logging.warning('volume id %s active in usage but deleted in cloudstack !', id)
-                        #remediate volume
-                        if simulate == False:
+                        # remediate volume
+                        if simulate is False:
                             querysetvolumeremoved = "UPDATE cloud_usage.usage_volume SET deleted = '%s' where id like '%s'" % (currentdatetime, id)
                             cursor.execute(querysetvolumeremoved)
                             logging.warning('volume id %s has been remediated in usage', id)
@@ -64,7 +66,8 @@ def remediatevolumes():
                             logging.warning('volume id %s has been remediated in usage', id)
         con.close()
         logging.info('Completed volumes remediation pass')
-        instances = remediateinstances()
+        remediateinstances()
+
 
 def remediateinstances():
 
@@ -74,41 +77,40 @@ def remediateinstances():
         con.autocommit(True)
         cursor = con.cursor()
 
-        #Remediate removed instances
-        querygetusageinstances="SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null;"
+        # Remediate removed instances
+        querygetusageinstances = "SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null;"
         cursor.execute(querygetusageinstances)
         rows = cursor.fetchall()
-        usageinstanceid=[]
+        usageinstanceid = []
         for row in rows:
             usageinstanceid.append(row[0])
         for id in usageinstanceid:
-            querygetinstance="SELECT removed FROM cloud.vm_instance where id = '%s';" % id
+            querygetinstance = "SELECT removed FROM cloud.vm_instance where id = '%s';" % id
             cursor.execute(querygetinstance)
             rows = cursor.fetchall()
             for row in rows:
                 csremoveddate = row[0]
                 if csremoveddate is not None:
                     # prevent removal of unprocessed hourly usage
-                    if (datetime.now() - csremoveddate) > timedelta(hours = 4):
+                    if (datetime.now() - csremoveddate) > timedelta(hours=4):
                         logging.warning('instance id %s existing in usage but removed in cloudstack !', id)
-                        #remediate instance
-                        if simulate == False:
+                        # remediate instance
+                        if simulate is False:
                             querysetinstanceremoved = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s'" % (currentdatetime, id)
                             cursor.execute(querysetinstanceremoved)
                             logging.warning('instance id %s has been remediated in usage (removed)', id)
                         else:
                             logging.warning('instance id %s has been remediated in usage (removed) simulated', id)
 
-
-        #Remediate stopped instances
-        querygetusageinstances="SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null and usage_type = '1';"
+        # Remediate stopped instances
+        querygetusageinstances = "SELECT vm_instance_id FROM cloud_usage.usage_vm_instance where end_date is null and usage_type = '1';"
         cursor.execute(querygetusageinstances)
         rows = cursor.fetchall()
-        usageinstanceid=[]
+        usageinstanceid = []
         for row in rows:
             usageinstanceid.append(row[0])
         for id in usageinstanceid:
-            querygetinstance="SELECT state, update_time FROM cloud.vm_instance where id = '%s';" % id
+            querygetinstance = "SELECT state, update_time FROM cloud.vm_instance where id = '%s';" % id
             cursor.execute(querygetinstance)
             rows = cursor.fetchall()
             for row in rows:
@@ -116,10 +118,10 @@ def remediateinstances():
                 csupdatedate = row[1]
                 if csstate == 'Stopped':
                     # prevent removal of unprocessed hourly usage
-                    if (datetime.now() - csupdatedate) > timedelta(hours = 4):
+                    if (datetime.now() - csupdatedate) > timedelta(hours=4):
                         logging.warning('instance id %s state is running in usage but stopped in cloudstack !', id)
-                        #remediate instance
-                        if simulate == False:
+                        # remediate instance
+                        if simulate is False:
                             querysetinstancestopped = "UPDATE cloud_usage.usage_vm_instance SET end_date = '%s' where vm_instance_id = '%s' and usage_type = '1'" % (csupdatedate, id)
                             cursor.execute(querysetinstancestopped)
                             logging.warning('instance id %s has been remediated in usage (stopped)', id)
@@ -145,5 +147,3 @@ if __name__ == "__main__":
         else:
             client = Client(dsn=args['sentryapikey'])
             client.captureException()
-
-
